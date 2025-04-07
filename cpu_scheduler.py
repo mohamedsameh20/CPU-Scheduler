@@ -84,7 +84,7 @@ def round_robin_scheduler():
             process['remaining_time'] -= execute_time
             update_burst_table()
 
-            if process['remaining_time'] > 0.0001:
+            if process['remaining_time'] > 0:
                 queue.append(process)
             else:
                 process['completed'] = True
@@ -198,7 +198,7 @@ def Preemptive_SJF_scheduler():
             process['remaining_time'] -= execute_time
             update_burst_table()
 
-            if process['remaining_time'] > 0.0001:
+            if process['remaining_time'] > 0:
                 queue.append(process)
             else:
                 process['completed'] = True
@@ -312,7 +312,7 @@ def preemptive_priority_scheduler():
             process['remaining_time'] -= execute_time
             update_burst_table()
 
-            if process['remaining_time'] > 0.0001:
+            if process['remaining_time'] > 0:
                 queue.append(process)
             else:
                 process['completed'] = True
