@@ -10,6 +10,7 @@ processes = []
 lock = Lock()
 current_time = 0.0
 running = False
+started = False
 static_mode = False
 current_quantum = 2.0
 last_gantt_end = 0.0
@@ -51,7 +52,7 @@ def draw_gantt_block(process, start, duration):
 
 
 def round_robin_scheduler():
-    global current_time, running, gantt_x, last_gantt_end
+    global started, current_time, running, gantt_x, last_gantt_end
     queue = []
     current_time = 0.0
     last_gantt_end = 0.0
@@ -59,55 +60,57 @@ def round_robin_scheduler():
     running = True
     reset_process_states()
 
-    while running:
-        with lock:
-            arrivals = [p for p in processes if
-                        p['arrival_time'] <= current_time and not p['in_queue'] and not p['completed']]
-            for p in arrivals:
-                queue.append(p)
-                p['in_queue'] = True
+    while started:
+        while running:
+            with lock:
+                arrivals = [p for p in processes if
+                            p['arrival_time'] <= current_time and not p['in_queue'] and not p['completed']]
+                for p in arrivals:
+                    queue.append(p)
+                    p['in_queue'] = True
 
-        if queue:
-            process = queue.pop(0)
-            execute_time = min(float(current_quantum), process['remaining_time'])
+            if queue:
+                process = queue.pop(0)
+                execute_time = min(float(current_quantum), process['remaining_time'])
 
-            if current_time > last_gantt_end:
-                draw_gantt_block(-1, last_gantt_end, current_time - last_gantt_end)
+                if current_time > last_gantt_end:
+                    draw_gantt_block(-1, last_gantt_end, current_time - last_gantt_end)
 
-            draw_gantt_block(process['Process'], current_time, execute_time)
-            update_gantt_chart(f"Time {current_time:.1f}-{current_time + execute_time:.1f}: P{process['Process']}")
+                draw_gantt_block(process['Process'], current_time, execute_time)
+                update_gantt_chart(f"Time {current_time:.1f}-{current_time + execute_time:.1f}: P{process['Process']}")
 
-            if not static_mode:
-                time.sleep(execute_time * TIME_UNIT)
+                if not static_mode:
+                    time.sleep(execute_time * TIME_UNIT)
 
-            current_time += execute_time
-            process['remaining_time'] -= execute_time
-            update_burst_table()
+                current_time += execute_time
+                process['remaining_time'] -= execute_time
+                update_burst_table()
 
-            if process['remaining_time'] > 0:
-                queue.append(process)
+                if process['remaining_time'] > 0:
+                    queue.append(process)
+                else:
+                    process['completed'] = True
+                    process['completion_time'] = current_time
+
+                if check_completion():
+                    running = False
+                    started = False
             else:
-                process['completed'] = True
-                process['completion_time'] = current_time
+                idle_duration = 1.0
+                if not static_mode:
+                    time.sleep(idle_duration * TIME_UNIT)
+                draw_gantt_block(-1, current_time, idle_duration)
+                update_gantt_chart(f"Time {current_time:.1f}-{current_time + idle_duration:.1f}: IDLE")
+                current_time += idle_duration
 
-            if check_completion():
-                running = False
-        else:
-            idle_duration = 1.0
-            if not static_mode:
-                time.sleep(idle_duration * TIME_UNIT)
-            draw_gantt_block(-1, current_time, idle_duration)
-            update_gantt_chart(f"Time {current_time:.1f}-{current_time + idle_duration:.1f}: IDLE")
-            current_time += idle_duration
-
-        if not running:
-            break
+            if not running:
+                break
 
     root.after(100, on_scheduler_complete)
 
 
 def FCFS_scheduler():
-    global current_time, running, gantt_x, last_gantt_end
+    global started, current_time, running, gantt_x, last_gantt_end
     queue = []
     current_time = 0.0
     last_gantt_end = 0.0
@@ -115,54 +118,56 @@ def FCFS_scheduler():
     running = True
     reset_process_states()
 
-    while running:
-        with lock:
-            arrivals = [p for p in processes if
-                        p['arrival_time'] <= current_time and not p['in_queue'] and not p['completed']]
-            for p in arrivals:
-                queue.append(p)
-                p['in_queue'] = True
+    while started:
+        while running:
+            with lock:
+                arrivals = [p for p in processes if
+                            p['arrival_time'] <= current_time and not p['in_queue'] and not p['completed']]
+                for p in arrivals:
+                    queue.append(p)
+                    p['in_queue'] = True
 
-        queue.sort(key=lambda x: x['arrival_time'])
+            queue.sort(key=lambda x: x['arrival_time'])
 
-        if queue:
-            process = queue.pop(0)
-            execute_time = process['remaining_time']
+            if queue:
+                process = queue.pop(0)
+                execute_time = process['remaining_time']
 
-            if current_time > last_gantt_end:
-                gap_duration = current_time - last_gantt_end
-                draw_gantt_block(-1, last_gantt_end, gap_duration)
+                if current_time > last_gantt_end:
+                    gap_duration = current_time - last_gantt_end
+                    draw_gantt_block(-1, last_gantt_end, gap_duration)
 
-            draw_gantt_block(process['Process'], current_time, execute_time)
-            update_gantt_chart(f"Time {current_time:.1f}-{current_time + execute_time:.1f}: P{process['Process']}")
+                draw_gantt_block(process['Process'], current_time, execute_time)
+                update_gantt_chart(f"Time {current_time:.1f}-{current_time + execute_time:.1f}: P{process['Process']}")
 
-            if not static_mode:
-                time.sleep(execute_time * TIME_UNIT)
+                if not static_mode:
+                    time.sleep(execute_time * TIME_UNIT)
 
-            current_time += execute_time
-            process['remaining_time'] -= execute_time
-            process['completed'] = True
-            process['completion_time'] = current_time
-            update_burst_table()
+                current_time += execute_time
+                process['remaining_time'] -= execute_time
+                process['completed'] = True
+                process['completion_time'] = current_time
+                update_burst_table()
 
-            if check_completion():
-                running = False
-        else:
-            idle_duration = 1.0
-            if not static_mode:
-                time.sleep(idle_duration * TIME_UNIT)
-            draw_gantt_block(-1, current_time, idle_duration)
-            update_gantt_chart(f"Time {current_time:.1f}-{current_time + idle_duration:.1f}: IDLE")
-            current_time += idle_duration
+                if check_completion():
+                    running = False
+                    started = False
+            else:
+                idle_duration = 1.0
+                if not static_mode:
+                    time.sleep(idle_duration * TIME_UNIT)
+                draw_gantt_block(-1, current_time, idle_duration)
+                update_gantt_chart(f"Time {current_time:.1f}-{current_time + idle_duration:.1f}: IDLE")
+                current_time += idle_duration
 
-        if not running:
-            break
+            if not running:
+                break
 
     root.after(100, on_scheduler_complete)
 
 
 def Preemptive_SJF_scheduler():
-    global current_time, running, gantt_x, last_gantt_end
+    global started, current_time, running, gantt_x, last_gantt_end
     queue = []
     current_time = 0.0
     last_gantt_end = 0.0
@@ -170,113 +175,117 @@ def Preemptive_SJF_scheduler():
     running = True
     reset_process_states()
 
-    while running:
-        with lock:
-            arrivals = [p for p in processes if
-                        p['arrival_time'] <= current_time and not p['in_queue'] and not p['completed']]
-            for p in arrivals:
-                queue.append(p)
-                p['in_queue'] = True
+    while started:
+        while running:
+            with lock:
+                arrivals = [p for p in processes if
+                            p['arrival_time'] <= current_time and not p['in_queue'] and not p['completed']]
+                for p in arrivals:
+                    queue.append(p)
+                    p['in_queue'] = True
 
-        queue.sort(key=lambda x: (x['remaining_time'], x['Process']))
+            queue.sort(key=lambda x: (x['remaining_time'], x['Process']))
 
-        if queue:
-            process = queue.pop(0)
-            execute_time = 1.0  # Preemption interval
+            if queue:
+                process = queue.pop(0)
+                execute_time = 1.0  # Preemption interval
 
-            if current_time > last_gantt_end:
-                gap_duration = current_time - last_gantt_end
-                draw_gantt_block(-1, last_gantt_end, gap_duration)
+                if current_time > last_gantt_end:
+                    gap_duration = current_time - last_gantt_end
+                    draw_gantt_block(-1, last_gantt_end, gap_duration)
 
-            draw_gantt_block(process['Process'], current_time, execute_time)
-            update_gantt_chart(f"Time {current_time:.1f}-{current_time + execute_time:.1f}: P{process['Process']}")
+                draw_gantt_block(process['Process'], current_time, execute_time)
+                update_gantt_chart(f"Time {current_time:.1f}-{current_time + execute_time:.1f}: P{process['Process']}")
 
-            if not static_mode:
-                time.sleep(execute_time * TIME_UNIT)
+                if not static_mode:
+                    time.sleep(execute_time * TIME_UNIT)
 
-            current_time += execute_time
-            process['remaining_time'] -= execute_time
-            update_burst_table()
+                current_time += execute_time
+                process['remaining_time'] -= execute_time
+                update_burst_table()
 
-            if process['remaining_time'] > 0:
-                queue.append(process)
+                if process['remaining_time'] > 0:
+                    queue.append(process)
+                else:
+                    process['completed'] = True
+                    process['completion_time'] = current_time
+
+                if check_completion():
+                    running = False
+                    started = False
             else:
-                process['completed'] = True
-                process['completion_time'] = current_time
+                idle_duration = 1.0
+                if not static_mode:
+                    time.sleep(idle_duration * TIME_UNIT)
+                draw_gantt_block(-1, current_time, idle_duration)
+                update_gantt_chart(f"Time {current_time:.1f}-{current_time + idle_duration:.1f}: IDLE")
+                current_time += idle_duration
 
-            if check_completion():
-                running = False
-        else:
-            idle_duration = 1.0
-            if not static_mode:
-                time.sleep(idle_duration * TIME_UNIT)
-            draw_gantt_block(-1, current_time, idle_duration)
-            update_gantt_chart(f"Time {current_time:.1f}-{current_time + idle_duration:.1f}: IDLE")
-            current_time += idle_duration
-
-        if not running:
-            break
+            if not running:
+                break
 
     root.after(100, on_scheduler_complete)
 
 
 def Non_Preemptive_SJF_scheduler():
-    global current_time, running, gantt_x, last_gantt_end
+    global started, current_time, running, gantt_x, last_gantt_end
     queue = []
     current_time = 0.0
     last_gantt_end = 0.0
     gantt_x = 10
     running = True
     reset_process_states()
+    
+    while started:
+        while running:
+            with lock:
+                arrivals = [p for p in processes if
+                            p['arrival_time'] <= current_time and not p['in_queue'] and not p['completed']]
+                for p in arrivals:
+                    queue.append(p)
+                    p['in_queue'] = True
 
-    while running:
-        with lock:
-            arrivals = [p for p in processes if
-                        p['arrival_time'] <= current_time and not p['in_queue'] and not p['completed']]
-            for p in arrivals:
-                queue.append(p)
-                p['in_queue'] = True
+            queue.sort(key=lambda x: (x['remaining_time'], x['Process']))
 
-        queue.sort(key=lambda x: (x['remaining_time'], x['Process']))
+            if queue:
+                process = queue.pop(0)
+                execute_time = process['remaining_time']
 
-        if queue:
-            process = queue.pop(0)
-            execute_time = process['remaining_time']
+                if current_time > last_gantt_end:
+                    gap_duration = current_time - last_gantt_end
+                    draw_gantt_block(-1, last_gantt_end, gap_duration)
 
-            if current_time > last_gantt_end:
-                gap_duration = current_time - last_gantt_end
-                draw_gantt_block(-1, last_gantt_end, gap_duration)
+                draw_gantt_block(process['Process'], current_time, execute_time)
+                update_gantt_chart(f"Time {current_time:.1f}-{current_time + execute_time:.1f}: P{process['Process']}")
 
-            draw_gantt_block(process['Process'], current_time, execute_time)
-            update_gantt_chart(f"Time {current_time:.1f}-{current_time + execute_time:.1f}: P{process['Process']}")
+                if not static_mode:
+                    time.sleep(execute_time * TIME_UNIT)
 
-            if not static_mode:
-                time.sleep(execute_time * TIME_UNIT)
+                current_time += execute_time
+                process['remaining_time'] -= execute_time
+                process['completed'] = True
+                process['completion_time'] = current_time
+                update_burst_table()
 
-            current_time += execute_time
-            process['remaining_time'] -= execute_time
-            process['completed'] = True
-            process['completion_time'] = current_time
-            update_burst_table()
+                if check_completion():
+                    running = False
+                    started = False
+            else:
+                idle_duration = 1.0
+                if not static_mode:
+                    time.sleep(idle_duration * TIME_UNIT)
+                draw_gantt_block(-1, current_time, idle_duration)
+                update_gantt_chart(f"Time {current_time:.1f}-{current_time + idle_duration:.1f}: IDLE")
+                current_time += idle_duration
 
-            if check_completion():
-                running = False
-        else:
-            idle_duration = 1.0
-            if not static_mode:
-                time.sleep(idle_duration * TIME_UNIT)
-            draw_gantt_block(-1, current_time, idle_duration)
-            update_gantt_chart(f"Time {current_time:.1f}-{current_time + idle_duration:.1f}: IDLE")
-            current_time += idle_duration
-
-        if not running:
-            break
+            if not running:
+                break
 
     root.after(100, on_scheduler_complete)
 
 
 def preemptive_priority_scheduler():
-    global current_time, running, gantt_x, last_gantt_end
+    global started, current_time, running, gantt_x, last_gantt_end
     queue = []
     current_time = 0.0
     last_gantt_end = 0.0
@@ -284,58 +293,60 @@ def preemptive_priority_scheduler():
     running = True
     reset_process_states()
 
-    while running:
-        with lock:
-            arrivals = [p for p in processes if
-                        p['arrival_time'] <= current_time and not p['in_queue'] and not p['completed']]
-            for p in arrivals:
-                queue.append(p)
-                p['in_queue'] = True
+    while started:
+        while running:
+            with lock:
+                arrivals = [p for p in processes if
+                            p['arrival_time'] <= current_time and not p['in_queue'] and not p['completed']]
+                for p in arrivals:
+                    queue.append(p)
+                    p['in_queue'] = True
 
-        queue.sort(key=lambda x: (x['priority'], x['remaining_time'], x['Process']))
+            queue.sort(key=lambda x: (x['priority'], x['remaining_time'], x['Process']))
 
-        if queue:
-            process = queue.pop(0)
-            execute_time = 1.0  # Preemption interval
+            if queue:
+                process = queue.pop(0)
+                execute_time = 1.0  # Preemption interval
 
-            if current_time > last_gantt_end:
-                gap_duration = current_time - last_gantt_end
-                draw_gantt_block(-1, last_gantt_end, gap_duration)
+                if current_time > last_gantt_end:
+                    gap_duration = current_time - last_gantt_end
+                    draw_gantt_block(-1, last_gantt_end, gap_duration)
 
-            draw_gantt_block(process['Process'], current_time, execute_time)
-            update_gantt_chart(f"Time {current_time:.1f}-{current_time + execute_time:.1f}: P{process['Process']}")
+                draw_gantt_block(process['Process'], current_time, execute_time)
+                update_gantt_chart(f"Time {current_time:.1f}-{current_time + execute_time:.1f}: P{process['Process']}")
 
-            if not static_mode:
-                time.sleep(execute_time * TIME_UNIT)
+                if not static_mode:
+                    time.sleep(execute_time * TIME_UNIT)
 
-            current_time += execute_time
-            process['remaining_time'] -= execute_time
-            update_burst_table()
+                current_time += execute_time
+                process['remaining_time'] -= execute_time
+                update_burst_table()
 
-            if process['remaining_time'] > 0:
-                queue.append(process)
+                if process['remaining_time'] > 0:
+                    queue.append(process)
+                else:
+                    process['completed'] = True
+                    process['completion_time'] = current_time
+
+                if check_completion():
+                    running = False
+                    started = False
             else:
-                process['completed'] = True
-                process['completion_time'] = current_time
+                idle_duration = 1.0
+                if not static_mode:
+                    time.sleep(idle_duration * TIME_UNIT)
+                draw_gantt_block(-1, current_time, idle_duration)
+                update_gantt_chart(f"Time {current_time:.1f}-{current_time + idle_duration:.1f}: IDLE")
+                current_time += idle_duration
 
-            if check_completion():
-                running = False
-        else:
-            idle_duration = 1.0
-            if not static_mode:
-                time.sleep(idle_duration * TIME_UNIT)
-            draw_gantt_block(-1, current_time, idle_duration)
-            update_gantt_chart(f"Time {current_time:.1f}-{current_time + idle_duration:.1f}: IDLE")
-            current_time += idle_duration
-
-        if not running:
-            break
+            if not running:
+                break
 
     root.after(100, on_scheduler_complete)
 
 
 def non_preemptive_priority_scheduler():
-    global current_time, running, gantt_x, last_gantt_end
+    global started, current_time, running, gantt_x, last_gantt_end
     queue = []
     current_time = 0.0
     last_gantt_end = 0.0
@@ -343,48 +354,50 @@ def non_preemptive_priority_scheduler():
     running = True
     reset_process_states()
 
-    while running:
-        with lock:
-            arrivals = [p for p in processes if
-                        p['arrival_time'] <= current_time and not p['in_queue'] and not p['completed']]
-            for p in arrivals:
-                queue.append(p)
-                p['in_queue'] = True
+    while started:
+        while running:
+            with lock:
+                arrivals = [p for p in processes if
+                            p['arrival_time'] <= current_time and not p['in_queue'] and not p['completed']]
+                for p in arrivals:
+                    queue.append(p)
+                    p['in_queue'] = True
 
-        queue.sort(key=lambda x: (x['priority'], x['remaining_time'], x['Process']))
+            queue.sort(key=lambda x: (x['priority'], x['remaining_time'], x['Process']))
 
-        if queue:
-            process = queue.pop(0)
-            execute_time = process['remaining_time']
+            if queue:
+                process = queue.pop(0)
+                execute_time = process['remaining_time']
 
-            if current_time > last_gantt_end:
-                gap_duration = current_time - last_gantt_end
-                draw_gantt_block(-1, last_gantt_end, gap_duration)
+                if current_time > last_gantt_end:
+                    gap_duration = current_time - last_gantt_end
+                    draw_gantt_block(-1, last_gantt_end, gap_duration)
 
-            draw_gantt_block(process['Process'], current_time, execute_time)
-            update_gantt_chart(f"Time {current_time:.1f}-{current_time + execute_time:.1f}: P{process['Process']}")
+                draw_gantt_block(process['Process'], current_time, execute_time)
+                update_gantt_chart(f"Time {current_time:.1f}-{current_time + execute_time:.1f}: P{process['Process']}")
 
-            if not static_mode:
-                time.sleep(execute_time * TIME_UNIT)
+                if not static_mode:
+                    time.sleep(execute_time * TIME_UNIT)
 
-            current_time += execute_time
-            process['remaining_time'] -= execute_time
-            process['completed'] = True
-            process['completion_time'] = current_time
-            update_burst_table()
+                current_time += execute_time
+                process['remaining_time'] -= execute_time
+                process['completed'] = True
+                process['completion_time'] = current_time
+                update_burst_table()
 
-            if check_completion():
-                running = False
-        else:
-            idle_duration = 1.0
-            if not static_mode:
-                time.sleep(idle_duration * TIME_UNIT)
-            draw_gantt_block(-1, current_time, idle_duration)
-            update_gantt_chart(f"Time {current_time:.1f}-{current_time + idle_duration:.1f}: IDLE")
-            current_time += idle_duration
+                if check_completion():
+                    running = False
+                    started = False
+            else:
+                idle_duration = 1.0
+                if not static_mode:
+                    time.sleep(idle_duration * TIME_UNIT)
+                draw_gantt_block(-1, current_time, idle_duration)
+                update_gantt_chart(f"Time {current_time:.1f}-{current_time + idle_duration:.1f}: IDLE")
+                current_time += idle_duration
 
-        if not running:
-            break
+            if not running:
+                break
 
     root.after(100, on_scheduler_complete)
 
@@ -402,12 +415,23 @@ def update_input_fields(*_):
 
 
 def start_scheduler(live=True):
-    global static_mode, current_quantum, running, gantt_x, last_gantt_end
-    if running:
-        messagebox.showwarning("Already Running", "Scheduler is already running!")
-        return
+    global started, static_mode, current_quantum, running, gantt_x, last_gantt_end
+    if started:
+        if running:
+
+            btn_start.config(text="Resume")
+            running = False
+            return
+
+        else:
+            btn_start.config(text="Pause")
+            running = True
+            return
 
     # Clear previous Gantt visualization
+
+    started = True
+    btn_start.config(text="Pause")
     gantt_x = 10
     last_gantt_end = 0.0
     canvas.delete("all")
@@ -433,10 +457,14 @@ def start_scheduler(live=True):
     }
 
     if not processes:
+
+        started = False
+        btn_start.config(text="Start Live")
         messagebox.showerror("Error", "Add at least one process first!")
+
         return
 
-    toggle_start_buttons('disabled')
+    # toggle_start_buttons('disabled')
     reset_process_states()
     Thread(target=scheduler_map[scheduler_var.get()]).start()
 
@@ -480,8 +508,12 @@ def safe_add_process():
 
 
 def reset_scheduler(full=True):
-    global processes, process_id_counter, running
-    running = False
+    global started, processes, process_id_counter, running
+    if started:
+        btn_start.config(text="Start Live")
+        started = False
+        running = False
+
     time.sleep(0.2)
 
     if full:
@@ -554,6 +586,7 @@ def on_scheduler_complete():
     toggle_start_buttons('normal')
     update_metrics()
     if check_completion():
+        btn_start.config(text="Start Live")
         messagebox.showinfo("Simulation Complete", "All processes finished execution!")
 
 
@@ -599,11 +632,18 @@ btn_add.grid(row=0, column=4, padx=5)
 btn_start = tk.Button(frame_inputs, text="Start Live", command=lambda: start_scheduler(True))
 btn_start.grid(row=0, column=5, padx=5)
 
+
+
+
+
+
 btn_static = tk.Button(frame_inputs, text="Start Static", command=lambda: start_scheduler(False))
 btn_static.grid(row=0, column=6, padx=5)
 
 btn_reset = tk.Button(frame_inputs, text="Full Reset", command=lambda: reset_scheduler(True))
 btn_reset.grid(row=0, column=7, padx=5)
+
+
 
 # Process Table
 tree = ttk.Treeview(root, columns=('ID', 'Arrival', 'Burst', 'Remaining', 'Priority', 'Done'), show='headings')
