@@ -666,8 +666,15 @@ gantt_frame = tk.Frame(root)
 gantt_frame.pack(fill='x', padx=10, pady=5)
 gantt_output = tk.Text(gantt_frame, height=8, width=40)
 gantt_output.pack(side='left', fill='y')
-canvas = tk.Canvas(gantt_frame, height=100, width=900, bg='white')
-canvas.pack(side='right', fill='both', expand=True)
+canvas_container = tk.Frame(gantt_frame)
+canvas_container.pack(side='right', fill='both', expand=True)
+h_scroll = tk.Scrollbar(canvas_container, orient='horizontal')
+h_scroll.pack(side='bottom', fill='x')
+canvas = tk.Canvas(canvas_container, height=100, width=600, bg='white',
+                   xscrollcommand=h_scroll.set, scrollregion=(0, 0, 2000, 100))  
+canvas.pack(side='top', fill='both', expand=True)
+h_scroll.config(command=canvas.xview)
+canvas.configure(scrollregion=(0, 0, 3000, 100))
 
 # Metrics Display
 metrics_frame = tk.Frame(root)
